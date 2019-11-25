@@ -1,0 +1,19 @@
+[package]
+name = "possibly_uninit"
+version = "0.1.0-preview"
+authors = ["Martin Habovstiak <martin.habovstiak@gmail.com>"]
+description = "Traits and types helping with using uninitialized memory safely."
+homepage = "https://github.com/Kixunil/possibly_uninit"
+repository = "https://github.com/Kixunil/possibly_uninit"
+keywords = ["uninitialized", "memory", "MaybeUninit"]
+categories = ["no-std", "memory-mangement", "rust-patterns"]
+readme = "README.md"
+license = "MITNFA"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = []
+alloc = []
+std = ["alloc"]
