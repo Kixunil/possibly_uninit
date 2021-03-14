@@ -1,5 +1,5 @@
 use core::mem::MaybeUninit;
-use super::RefMut;
+use super::Out;
 use crate::zeroed::ZeroValid;
 
 /// Trait allowing borrowing of `MaybeUninit<T>` values.
@@ -26,12 +26,12 @@ pub unsafe trait BorrowUninit<Borrowed> {
 ///
 /// It's analogous to `core::borrow::Borrow`, expect it works with
 /// `MaybeUninit` values.
-pub unsafe trait BorrowUninitMut<Borrowed>: BorrowUninit<Borrowed> {
+pub unsafe trait BorrowOut<Borrowed>: BorrowUninit<Borrowed> {
     /// Mutably borrows maybe uninitialized value.
     ///
-    /// This method must return `RefMut` instead of normal `&mut T` because of
-    /// safety reasons described in the documentation of `RefMut` type.
-    fn borrow_uninit_mut(&mut self) -> RefMut<'_, Borrowed>;
+    /// This method must return `Out` instead of normal `&mut T` because of
+    /// safety reasons described in the documentation of `Out` type.
+    fn borrow_out(&mut self) -> Out<'_, Borrowed>;
 
     /// Converts the reference assuming it's initialized.
     ///
@@ -39,12 +39,12 @@ pub unsafe trait BorrowUninitMut<Borrowed>: BorrowUninit<Borrowed> {
     ///
     /// Calling this method on uninitialized value is undefined behavior.
     unsafe fn assume_init_mut(&mut self) -> &mut Borrowed {
-        self.borrow_uninit_mut().into_assume_init()
+        self.borrow_out().into_assume_init()
     }
 
     /// Initializes the memory location with valid value.
     fn init(&mut self, item: Borrowed) -> &mut Borrowed {
-        self.borrow_uninit_mut().write(item)
+        self.borrow_out().write(item)
     }
 
     /// Overwrites the memory with `Default::default()` if necessary.
@@ -62,7 +62,7 @@ pub unsafe trait BorrowUninitMut<Borrowed>: BorrowUninit<Borrowed> {
     /// interfacing with legacy code which can't work with
     /// `MaybeUninit<Borrowed>`.
     fn zeroed_if_needed(&mut self) -> &mut Borrowed where Borrowed: ZeroValid {
-        self.borrow_uninit_mut().into_zeroed()
+        self.borrow_out().into_zeroed()
     }
 }
 
@@ -74,8 +74,8 @@ unsafe impl<T> BorrowUninit<T> for T {
     }
 }
 
-unsafe impl<T> BorrowUninitMut<T> for T {
-    fn borrow_uninit_mut(&mut self) -> RefMut<'_, T> {
+unsafe impl<T> BorrowOut<T> for T {
+    fn borrow_out(&mut self) -> Out<'_, T> {
         self.into()
     }
 
@@ -94,8 +94,8 @@ unsafe impl<T> BorrowUninit<T> for MaybeUninit<T> {
     }
 }
 
-unsafe impl<T> BorrowUninitMut<T> for MaybeUninit<T> {
-    fn borrow_uninit_mut(&mut self) -> RefMut<'_, T> {
+unsafe impl<T> BorrowOut<T> for MaybeUninit<T> {
+    fn borrow_out(&mut self) -> Out<'_, T> {
         self.into()
     }
 }
@@ -112,8 +112,8 @@ unsafe impl<T> BorrowUninit<T> for &mut T {
     }
 }
 
-unsafe impl<T> BorrowUninitMut<T> for &mut T {
-    fn borrow_uninit_mut(&mut self) -> RefMut<'_, T> {
+unsafe impl<T> BorrowOut<T> for &mut T {
+    fn borrow_out(&mut self) -> Out<'_, T> {
         (*self).into()
     }
 
@@ -138,9 +138,9 @@ unsafe impl<T> BorrowUninit<T> for &mut MaybeUninit<T> {
     }
 }
 
-unsafe impl<T> BorrowUninitMut<T> for &mut MaybeUninit<T> {
-    fn borrow_uninit_mut(&mut self) -> RefMut<'_, T> {
-        (*self).borrow_uninit_mut()
+unsafe impl<T> BorrowOut<T> for &mut MaybeUninit<T> {
+    fn borrow_out(&mut self) -> Out<'_, T> {
+        (*self).borrow_out()
     }
 }
 
@@ -156,9 +156,9 @@ unsafe impl<T> BorrowUninit<T> for core::cell::RefMut<'_, T> {
     }
 }
 
-unsafe impl<T> BorrowUninitMut<T> for core::cell::RefMut<'_, T> {
-    fn borrow_uninit_mut(&mut self) -> RefMut<'_, T> {
-        (**self).borrow_uninit_mut()
+unsafe impl<T> BorrowOut<T> for core::cell::RefMut<'_, T> {
+    fn borrow_out(&mut self) -> Out<'_, T> {
+        (**self).borrow_out()
     }
 
     fn default_if_needed(&mut self) -> &mut T where T: Default {
@@ -182,9 +182,9 @@ unsafe impl<T> BorrowUninit<T> for core::cell::RefMut<'_, MaybeUninit<T>> {
     }
 }
 
-unsafe impl<T> BorrowUninitMut<T> for core::cell::RefMut<'_, MaybeUninit<T>> {
-    fn borrow_uninit_mut(&mut self) -> RefMut<'_, T> {
-        (**self).borrow_uninit_mut()
+unsafe impl<T> BorrowOut<T> for core::cell::RefMut<'_, MaybeUninit<T>> {
+    fn borrow_out(&mut self) -> Out<'_, T> {
+        (**self).borrow_out()
     }
 }
 
@@ -202,11 +202,11 @@ unsafe impl<T, U> BorrowUninit<U> for T where T: SameDataDeref + Deref + ?Sized,
     }
 }
 
-unsafe impl<T, U> BorrowUninitMut<U> for T where T: SameDataDeref + Deref + DerefMut + ?Sized,
-                                                 T::Target: BorrowUninitMut<U> {
+unsafe impl<T, U> BorrowOut<U> for T where T: SameDataDeref + Deref + DerefMut + ?Sized,
+                                                 T::Target: BorrowOut<U> {
 
-    fn borrow_uninit_mut(&self) -> RefMut<'_, U> {
-        self.borrow_uninit_mut()
+    fn borrow_out(&self) -> Out<'_, U> {
+        self.borrow_out()
     }
 }
 */

@@ -1,7 +1,7 @@
-use super::{BorrowUninitSliceMut, MaybeUninitSlice, TakeItem};
+use super::{BorrowOutSlice, OutSlice, TakeItem};
 use crate::cast::InitTc;
 
-/// Wraps a (maybe uninitialized) slice as a `BorrowUninitSliceMut`, tracking the
+/// Wraps a (maybe uninitialized) slice as a `BorrowOutSlice`, tracking the
 /// position. This allows you to work with readers and uninitialized memory
 /// completely safely.
 ///
@@ -23,13 +23,13 @@ use crate::cast::InitTc;
 /// `MaybeUninit<T>` or with `Copy` types.
 ///
 /// This may change in future versions.
-pub struct Cursor<Item, Arr: BorrowUninitSliceMut<Item> + ?Sized> {
+pub struct Cursor<Item, Arr: BorrowOutSlice<Item> + ?Sized> {
     _phantom: core::marker::PhantomData<[Item]>,
     position: usize,
     data: Arr,
 }
 
-impl<Item, Arr: BorrowUninitSliceMut<Item>> Cursor<Item, Arr> {
+impl<Item, Arr: BorrowOutSlice<Item>> Cursor<Item, Arr> {
     /// Creates `Cursor` initialized with position 0
     pub fn new(buf: Arr) -> Self {
         Cursor {
@@ -40,11 +40,11 @@ impl<Item, Arr: BorrowUninitSliceMut<Item>> Cursor<Item, Arr> {
     }
 }
 
-impl<Item, Arr: BorrowUninitSliceMut<Item> + ?Sized> Cursor<Item, Arr> {
+impl<Item, Arr: BorrowOutSlice<Item> + ?Sized> Cursor<Item, Arr> {
     /// Pushes an item at the end of the array
     pub fn push(&mut self, item: Item) -> Result<&mut Item, Item> {
         if self.position < self.data.borrow_uninit_slice().len() {
-            let res = self.data.borrow_uninit_slice_mut().at_mut(self.position).write(item);
+            let res = self.data.borrow_out_slice().at_mut(self.position).write(item);
             self.position += 1;
             Ok(res)
         } else {
@@ -58,7 +58,7 @@ impl<Item, Arr: BorrowUninitSliceMut<Item> + ?Sized> Cursor<Item, Arr> {
     /// If you want to access everything that has been written so far, use the
     /// `written()` method after call to this one.
     pub fn push_iter<I>(&mut self, iter: I) -> &mut [Item] where I: IntoIterator, I::Item: TakeItem<Item> {
-        let res = self.data.borrow_uninit_slice_mut()[self.position..].init_from_iter(iter);
+        let res = self.data.borrow_out_slice()[self.position..].init_from_iter(iter);
         self.position += res.len();
         res
     }
@@ -84,7 +84,7 @@ impl<Item, Arr: BorrowUninitSliceMut<Item> + ?Sized> Cursor<Item, Arr> {
     /// Mutably access the written slice.
     pub fn written_mut(&mut self) -> &mut [Item] {
         unsafe {
-            let slice = &mut self.data.borrow_uninit_slice_mut()[..self.position];
+            let slice = &mut self.data.borrow_out_slice()[..self.position];
             core::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut Item, slice.len())
         }
     }
@@ -99,7 +99,7 @@ impl<Item, Arr: BorrowUninitSliceMut<Item> + ?Sized> Cursor<Item, Arr> {
 
         unsafe {
             if self.position > 0 && self.position - 1 < self.data.borrow_uninit_slice().len() {
-                let res = *self.data.borrow_uninit_slice_mut().at_mut(self.position - 1).assume_init_ref();
+                let res = *self.data.borrow_out_slice().at_mut(self.position - 1).assume_init_ref();
                 self.position -= 1;
                 Some(res)
             } else {
@@ -114,7 +114,7 @@ impl<Item, Arr: BorrowUninitSliceMut<Item> + ?Sized> Cursor<Item, Arr> {
     pub fn pop_slice(&mut self, max: usize) -> &mut [Item] {
         unsafe {
             let to_remove = self.position.min(max);
-            let res = &mut self.data.borrow_uninit_slice_mut()[(self.position - to_remove)..self.position];
+            let res = &mut self.data.borrow_out_slice()[(self.position - to_remove)..self.position];
             self.position -= to_remove;
             core::slice::from_raw_parts_mut(res.as_mut_ptr() as *mut Item, to_remove)
         }
@@ -134,9 +134,9 @@ impl<Item, Arr: BorrowUninitSliceMut<Item> + ?Sized> Cursor<Item, Arr> {
 
     /// Splits the internal buffer at current position and returns both
     /// initialized and uninitialized part.
-    pub fn split_mut(&mut self) -> (&mut [Item], &mut MaybeUninitSlice<Item>) {
+    pub fn split_mut(&mut self) -> (&mut [Item], &mut OutSlice<Item>) {
         unsafe {
-            let (first, second) = self.data.borrow_uninit_slice_mut().split_at_mut(self.position);
+            let (first, second) = self.data.borrow_out_slice().split_at_mut(self.position);
             (first.assume_init_mut(), second)
         }
     }
@@ -154,7 +154,7 @@ impl<Item, Arr: BorrowUninitSliceMut<Item> + ?Sized> Cursor<Item, Arr> {
     }
 }
 
-impl<Item, Arr: BorrowUninitSliceMut<Item>> From<Arr> for Cursor<Item, Arr> {
+impl<Item, Arr: BorrowOutSlice<Item>> From<Arr> for Cursor<Item, Arr> {
     fn from(value: Arr) -> Self {
         Self::new(value)
     }
@@ -164,7 +164,7 @@ impl<Item, Arr: BorrowUninitSliceMut<Item>> From<Arr> for Cursor<Item, Arr> {
 mod alloc_impls {
     use super::Cursor;
     use core::mem::MaybeUninit;
-    use super::super::BorrowUninitSliceMut;
+    use super::super::BorrowOutSlice;
 
     use alloc::boxed::Box;
     use alloc::vec::Vec;
@@ -182,7 +182,7 @@ mod alloc_impls {
         /// Constructs the `Cursor` from `Vec` using whole capacity of the vec.
         ///
         /// This method currently leaks all present items
-        pub fn from_vec_entire_capaity<T>(mut vec: Vec<T>) -> Self where Box<[MaybeUninit<T>]>: BorrowUninitSliceMut<Item> {
+        pub fn from_vec_entire_capaity<T>(mut vec: Vec<T>) -> Self where Box<[MaybeUninit<T>]>: BorrowOutSlice<Item> {
             unsafe {
                 let ptr = vec.as_mut_ptr();
                 let capacity = vec.capacity();
@@ -202,7 +202,7 @@ mod alloc_impls {
         }
     }
 
-    impl<Item> Cursor<Item, Box<[Item]>> where Box<[Item]>: BorrowUninitSliceMut<Item> {
+    impl<Item> Cursor<Item, Box<[Item]>> where Box<[Item]>: BorrowOutSlice<Item> {
         /// Constructs the `Cursor` from `Vec` by reallocating it in order to
         /// throw away the excess capacity.
         pub fn from_vec_resizing(vec: Vec<Item>) -> Self {

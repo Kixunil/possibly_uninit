@@ -46,7 +46,7 @@ impl<T> TakeItem<T> for alloc::boxed::Box<T> {
 /// `&mut [T]`.
 ///
 /// One would normally expect this to be `&mut [MaybeUninit<T>]`, however,
-/// that wouldn't be safe. Consider this code:
+/// that wouldn't be sound. Consider this code:
 ///
 /// ```should_panic
 /// use core::mem::MaybeUninit;
@@ -73,17 +73,17 @@ impl<T> TakeItem<T> for alloc::boxed::Box<T> {
 /// limited in safe code, it's a base building block allowing sound
 /// implementations of wrappers tracking initializedness. See `Cursor` type in
 /// this crate.
-pub struct MaybeUninitSlice<T>([MaybeUninit<T>]);
+pub struct OutSlice<T>([MaybeUninit<T>]);
 
-impl<T> MaybeUninitSlice<T> {
+impl<T> OutSlice<T> {
     fn as_raw(&self) -> &[MaybeUninit<T>] {
         unsafe {
-            &*(self as *const MaybeUninitSlice<T> as *const [MaybeUninit<T>])
+            &*(self as *const OutSlice<T> as *const [MaybeUninit<T>])
         }
     }
 
     unsafe fn as_raw_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        &mut *(self as *mut MaybeUninitSlice<T> as *mut [MaybeUninit<T>])
+        &mut *(self as *mut OutSlice<T> as *mut [MaybeUninit<T>])
     }
 
     /// Accesses the value at given index.
@@ -98,7 +98,7 @@ impl<T> MaybeUninitSlice<T> {
     ///
     /// A special reference wrapper is returned that allows you to only write
     /// valid values.
-    pub fn at_mut<I: SliceIndex<[MaybeUninit<T>], Output=MaybeUninit<T>>>(&mut self, index: I) -> super::RefMut<'_, T> {
+    pub fn at_mut<I: SliceIndex<[MaybeUninit<T>], Output=MaybeUninit<T>>>(&mut self, index: I) -> super::Out<'_, T> {
         (&mut self.0[index]).into()
     }
 
@@ -122,7 +122,7 @@ impl<T> MaybeUninitSlice<T> {
     /// # Panics
     ///
     /// Panics if `mid` is out of bounds.
-    pub fn split_at_mut(&mut self, mid: usize) -> (&mut MaybeUninitSlice<T>, &mut MaybeUninitSlice<T>) {
+    pub fn split_at_mut(&mut self, mid: usize) -> (&mut OutSlice<T>, &mut OutSlice<T>) {
         unsafe {
             let (first, second) = self.as_raw_mut().split_at_mut(mid);
             (first.into(), second.into())
@@ -219,7 +219,7 @@ impl<T> MaybeUninitSlice<T> {
     }
 }
 
-impl<T, R: SliceIndex<[MaybeUninit<T>], Output=[MaybeUninit<T>]>> Index<R> for MaybeUninitSlice<T> {
+impl<T, R: SliceIndex<[MaybeUninit<T>], Output=[MaybeUninit<T>]>> Index<R> for OutSlice<T> {
     type Output = Self;
 
     fn index(&self, range: R) -> &Self::Output {
@@ -227,7 +227,7 @@ impl<T, R: SliceIndex<[MaybeUninit<T>], Output=[MaybeUninit<T>]>> Index<R> for M
     }
 }
 
-impl<T, R: SliceIndex<[MaybeUninit<T>], Output=[MaybeUninit<T>]>> IndexMut<R> for MaybeUninitSlice<T> {
+impl<T, R: SliceIndex<[MaybeUninit<T>], Output=[MaybeUninit<T>]>> IndexMut<R> for OutSlice<T> {
     fn index_mut(&mut self, range: R) -> &mut Self::Output {
         unsafe {
             (&mut self.as_raw_mut()[range]).into()
@@ -235,58 +235,58 @@ impl<T, R: SliceIndex<[MaybeUninit<T>], Output=[MaybeUninit<T>]>> IndexMut<R> fo
     }
 }
 
-impl<'a, T> From<&'a [T]> for &'a MaybeUninitSlice<T> {
+impl<'a, T> From<&'a [T]> for &'a OutSlice<T> {
     fn from(value: &'a [T]) -> Self {
         unsafe {
             let ptr = value.as_ptr() as *const MaybeUninit<T>;
             let len = value.len();
 
-            &*(core::slice::from_raw_parts(ptr, len) as *const [MaybeUninit<T>] as *const MaybeUninitSlice<T>)
+            &*(core::slice::from_raw_parts(ptr, len) as *const [MaybeUninit<T>] as *const OutSlice<T>)
         }
     }
 }
 
-impl<'a, T> From<&'a mut [T]> for &'a mut MaybeUninitSlice<T> {
+impl<'a, T> From<&'a mut [T]> for &'a mut OutSlice<T> {
     fn from(value: &'a mut [T]) -> Self {
         unsafe {
             let ptr = value.as_mut_ptr() as *mut MaybeUninit<T>;
             let len = value.len();
 
-            &mut *(core::slice::from_raw_parts_mut(ptr, len) as *mut [MaybeUninit<T>] as *mut MaybeUninitSlice<T>)
+            &mut *(core::slice::from_raw_parts_mut(ptr, len) as *mut [MaybeUninit<T>] as *mut OutSlice<T>)
         }
     }
 }
 
-impl<'a, T> From<&'a [MaybeUninit<T>]> for &'a MaybeUninitSlice<T> {
+impl<'a, T> From<&'a [MaybeUninit<T>]> for &'a OutSlice<T> {
     fn from(value: &'a [MaybeUninit<T>]) -> Self {
         unsafe {
-            &*(value as *const [MaybeUninit<T>] as *const MaybeUninitSlice<T>)
+            &*(value as *const [MaybeUninit<T>] as *const OutSlice<T>)
         }
     }
 }
 
-impl<'a, T> From<&'a mut [MaybeUninit<T>]> for &'a mut MaybeUninitSlice<T> {
+impl<'a, T> From<&'a mut [MaybeUninit<T>]> for &'a mut OutSlice<T> {
     fn from(value: &'a mut [MaybeUninit<T>]) -> Self {
         unsafe {
-            &mut *(value as *mut [MaybeUninit<T>] as *mut MaybeUninitSlice<T>)
+            &mut *(value as *mut [MaybeUninit<T>] as *mut OutSlice<T>)
         }
     }
 }
 
-unsafe impl<T> BorrowUninitSlice<T> for MaybeUninitSlice<T> {
+unsafe impl<T> BorrowUninitSlice<T> for OutSlice<T> {
     fn borrow_uninit_slice(&self) -> &[MaybeUninit<T>] {
         self.as_raw()
     }
 }
 
-unsafe impl<'a, T> BorrowUninitSliceMut<T> for MaybeUninitSlice<T> {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<T> {
+unsafe impl<'a, T> BorrowOutSlice<T> for OutSlice<T> {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<T> {
         self
     }
 }
 
-impl<'a, T> IntoIterator for &'a mut MaybeUninitSlice<T> {
-    type Item = super::RefMut<'a, T>;
+impl<'a, T> IntoIterator for &'a mut OutSlice<T> {
+    type Item = super::Out<'a, T>;
     type IntoIter = IterMut<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -296,9 +296,9 @@ impl<'a, T> IntoIterator for &'a mut MaybeUninitSlice<T> {
     }
 }
 
-/// Mutable `MaybeUninitSlice` iterator.
+/// Mutable `OutSlice` iterator.
 ///
-/// This struct is created by `iter_mut` method on `MaybeUninitSlice`.
+/// This struct is created by `iter_mut` method on `OutSlice`.
 pub struct IterMut<'a, T>(core::slice::IterMut<'a, MaybeUninit<T>>);
 
 impl<'a, T> IterMut<'a, T> {
@@ -306,13 +306,13 @@ impl<'a, T> IterMut<'a, T> {
     ///
     /// To avoid creating `&mut` references that alias, this is forced to
     /// consume the iterator.
-    pub fn into_slice(self) -> &'a mut MaybeUninitSlice<T> {
+    pub fn into_slice(self) -> &'a mut OutSlice<T> {
         self.0.into_slice().into()
     }
 }
 
 impl<'a, T> Iterator for IterMut<'a, T> {
-    type Item = super::RefMut<'a, T>;
+    type Item = super::Out<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(Into::into)
@@ -355,9 +355,9 @@ pub unsafe trait BorrowUninitSlice<Item> {
 /// * `Wrapper<MaybeUninit<Item>>`
 /// * `Wrapper<ReferenceTypeMut<Item>>`
 /// * `Wrapper<ReferenceTypeMut<MaybeUninit<Item>>>`
-pub unsafe trait BorrowUninitSliceMut<Item>: BorrowUninitSlice<Item> {
+pub unsafe trait BorrowOutSlice<Item>: BorrowUninitSlice<Item> {
     /// Borrows the value as a mutable slice of `MaybeUninit<Item>`
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item>;
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item>;
 
     /// Zeroes the buffer if it's needed and returns it as initialized.
     ///
@@ -372,7 +372,7 @@ pub unsafe trait BorrowUninitSliceMut<Item>: BorrowUninitSlice<Item> {
     /// bug.
     fn zero_if_needed(&mut self) -> &mut [Item] where Item: ZeroValid {
         unsafe {
-            self.borrow_uninit_slice_mut().write_zeroes();
+            self.borrow_out_slice().write_zeroes();
             self.assume_init_mut()
         }
     }
@@ -383,7 +383,7 @@ pub unsafe trait BorrowUninitSliceMut<Item>: BorrowUninitSlice<Item> {
     ///
     /// Panics if the lengths differ.
     fn init_with_copy_from_slice(&mut self, slice: &[Item]) -> &mut [Item] where Item: Copy {
-        self.borrow_uninit_slice_mut().copy_from_slice(slice)
+        self.borrow_out_slice().copy_from_slice(slice)
     }
 
     /// Initializes a subslice by copying from another slice.
@@ -391,8 +391,8 @@ pub unsafe trait BorrowUninitSliceMut<Item>: BorrowUninitSlice<Item> {
     /// This is similar to `init_with_copy_from_slice` except that instead of
     /// panicking, it copies minimum of the slice lengths.
     fn init_with_copy_from_slice_min(&mut self, slice: &[Item]) -> &mut [Item] where Item: Copy {
-        let to_copy = self.borrow_uninit_slice_mut().len().min(slice.len());
-        let target = &mut self.borrow_uninit_slice_mut()[..to_copy];
+        let to_copy = self.borrow_out_slice().len().min(slice.len());
+        let target = &mut self.borrow_out_slice()[..to_copy];
 
         target.init_with_copy_from_slice(&slice[..to_copy])
     }
@@ -402,7 +402,7 @@ pub unsafe trait BorrowUninitSliceMut<Item>: BorrowUninitSlice<Item> {
     /// This method is `unsafe` because calling it without **all** the slice
     /// being initialized is undefined behavior.
     unsafe fn assume_init_mut(&mut self) -> &mut [Item] {
-        let slice = self.borrow_uninit_slice_mut();
+        let slice = self.borrow_out_slice();
         core::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut Item, slice.len())
     }
 }
@@ -413,8 +413,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         self.into()
     }
 }
@@ -427,8 +427,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         self.into()
     }
 
@@ -452,10 +452,10 @@ unsafe impl<T, Item> BorrowUninitSlice<Item> for T where T: SameDataDeref + Dere
     }
 }
 
-unsafe impl<T, Item> BorrowUninitSliceMut<Item> for T where T: SameDataDeref + Deref + DerefMut + ?Sized,
-                                                    T::Target: BorrowUninitSliceMut<Item> {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
-        (**self).borrow_uninit_slice_mut()
+unsafe impl<T, Item> BorrowOutSlice<Item> for T where T: SameDataDeref + Deref + DerefMut + ?Sized,
+                                                    T::Target: BorrowOutSlice<Item> {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
+        (**self).borrow_out_slice()
     }
 
     fn zero_if_needed(&mut self) -> &mut [Item] where Item: ZeroValid {
@@ -469,8 +469,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 0] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 0] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 0] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -484,8 +484,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 0] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 0] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 0] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -500,8 +500,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 1] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 1] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 1] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -515,8 +515,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 1] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 1] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 1] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -531,8 +531,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 2] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 2] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 2] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -546,8 +546,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 2] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 2] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 2] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -562,8 +562,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 3] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 3] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 3] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -577,8 +577,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 3] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 3] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 3] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -593,8 +593,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 4] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 4] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 4] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -608,8 +608,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 4] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 4] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 4] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -624,8 +624,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 5] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 5] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 5] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -639,8 +639,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 5] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 5] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 5] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -655,8 +655,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 6] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 6] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 6] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -670,8 +670,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 6] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 6] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 6] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -686,8 +686,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 7] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 7] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 7] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -701,8 +701,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 7] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 7] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 7] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -717,8 +717,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 8] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 8] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 8] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -732,8 +732,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 8] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 8] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 8] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -748,8 +748,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 9] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 9] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 9] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -763,8 +763,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 9] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 9] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 9] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -779,8 +779,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 10] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 10] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 10] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -794,8 +794,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 10] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 10] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 10] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -810,8 +810,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 11] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 11] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 11] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -825,8 +825,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 11] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 11] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 11] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -841,8 +841,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 12] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 12] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 12] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -856,8 +856,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 12] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 12] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 12] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -872,8 +872,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 13] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 13] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 13] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -887,8 +887,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 13] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 13] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 13] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -903,8 +903,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 14] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 14] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 14] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -918,8 +918,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 14] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 14] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 14] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -934,8 +934,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 15] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 15] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 15] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -949,8 +949,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 15] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 15] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 15] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -965,8 +965,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 16] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 16] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 16] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -980,8 +980,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 16] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 16] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 16] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -996,8 +996,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 17] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 17] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 17] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1011,8 +1011,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 17] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 17] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 17] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1027,8 +1027,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 18] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 18] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 18] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1042,8 +1042,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 18] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 18] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 18] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1058,8 +1058,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 19] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 19] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 19] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1073,8 +1073,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 19] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 19] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 19] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1089,8 +1089,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 20] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 20] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 20] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1104,8 +1104,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 20] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 20] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 20] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1120,8 +1120,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 21] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 21] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 21] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1135,8 +1135,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 21] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 21] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 21] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1151,8 +1151,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 22] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 22] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 22] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1166,8 +1166,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 22] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 22] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 22] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1182,8 +1182,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 23] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 23] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 23] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1197,8 +1197,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 23] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 23] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 23] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1213,8 +1213,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 24] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 24] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 24] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1228,8 +1228,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 24] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 24] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 24] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1244,8 +1244,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 25] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 25] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 25] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1259,8 +1259,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 25] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 25] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 25] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1275,8 +1275,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 26] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 26] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 26] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1290,8 +1290,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 26] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 26] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 26] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1306,8 +1306,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 27] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 27] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 27] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1321,8 +1321,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 27] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 27] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 27] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1337,8 +1337,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 28] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 28] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 28] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1352,8 +1352,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 28] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 28] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 28] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1368,8 +1368,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 29] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 29] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 29] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1383,8 +1383,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 29] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 29] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 29] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1399,8 +1399,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 30] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 30] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 30] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1414,8 +1414,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 30] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 30] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 30] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1430,8 +1430,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 31] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 31] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 31] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1445,8 +1445,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 31] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 31] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 31] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
@@ -1461,8 +1461,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [MaybeUninit<Item>; 32] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [MaybeUninit<Item>; 32] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [MaybeUninit<Item>; 32] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 }
@@ -1476,8 +1476,8 @@ unsafe impl<Item> BorrowUninitSlice<Item> for [Item; 32] {
     }
 }
 
-unsafe impl<Item> BorrowUninitSliceMut<Item> for [Item; 32] {
-    fn borrow_uninit_slice_mut(&mut self) -> &mut MaybeUninitSlice<Item> {
+unsafe impl<Item> BorrowOutSlice<Item> for [Item; 32] {
+    fn borrow_out_slice(&mut self) -> &mut OutSlice<Item> {
         (self as &mut [_]).into()
     }
 
